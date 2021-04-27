@@ -4,6 +4,7 @@ use crate::layout;
 use crate::mouse;
 use crate::row;
 use crate::text;
+use crate::touch;
 use crate::{
     Align, Clipboard, Element, Hasher, HorizontalAlignment, Layout, Length,
     Point, Rectangle, Row, Text, VerticalAlignment, Widget,
@@ -155,12 +156,13 @@ where
         event: Event,
         layout: Layout<'_>,
         cursor_position: Point,
-        messages: &mut Vec<Message>,
         _renderer: &Renderer,
-        _clipboard: Option<&dyn Clipboard>,
+        _clipboard: &mut dyn Clipboard,
+        messages: &mut Vec<Message>,
     ) -> event::Status {
         match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 if layout.bounds().contains(cursor_position) {
                     messages.push(self.on_click.clone());
 

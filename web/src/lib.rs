@@ -1,7 +1,5 @@
 //! A web runtime for Iced, targetting the DOM.
 //!
-//! ![`iced_web` crate graph](https://github.com/hecrj/iced/blob/cae26cb7bc627f4a5b3bcf1cd023a0c552e8c65e/docs/graphs/web.png?raw=true)
-//!
 //! `iced_web` takes [`iced_core`] and builds a WebAssembly runtime on top. It
 //! achieves this by introducing a `Widget` trait that can be used to produce
 //! VDOM nodes.
@@ -51,7 +49,7 @@
 //!
 //! [`wasm-pack`]: https://github.com/rustwasm/wasm-pack
 //! [`wasm-bindgen`]: https://github.com/rustwasm/wasm-bindgen
-//! [`tour` example]: https://github.com/hecrj/iced/tree/0.1/examples/tour
+//! [`tour` example]: https://github.com/hecrj/iced/tree/0.2/examples/tour
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![deny(unused_results)]
@@ -61,6 +59,7 @@ use dodrio::bumpalo;
 use std::{cell::RefCell, rc::Rc};
 
 mod bus;
+mod clipboard;
 mod element;
 mod hasher;
 
@@ -69,6 +68,7 @@ pub mod subscription;
 pub mod widget;
 
 pub use bus::Bus;
+pub use clipboard::Clipboard;
 pub use css::Css;
 pub use dodrio;
 pub use element::Element;
@@ -128,7 +128,11 @@ pub trait Application {
     /// this method.
     ///
     /// Any [`Command`] returned will be executed immediately in the background.
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message>;
+    fn update(
+        &mut self,
+        message: Self::Message,
+        clipboard: &mut Clipboard,
+    ) -> Command<Self::Message>;
 
     /// Returns the widgets to display in the [`Application`].
     ///
@@ -158,6 +162,8 @@ pub trait Application {
         let document = window.document().unwrap();
         let body = document.body().unwrap();
 
+        let mut clipboard = Clipboard::new();
+
         let (sender, receiver) =
             iced_futures::futures::channel::mpsc::unbounded();
 
@@ -184,7 +190,8 @@ pub trait Application {
 
         let event_loop = receiver.for_each(move |message| {
             let (command, subscription) = runtime.enter(|| {
-                let command = application.borrow_mut().update(message);
+                let command =
+                    application.borrow_mut().update(message, &mut clipboard);
                 let subscription = application.borrow().subscription();
 
                 (command, subscription)

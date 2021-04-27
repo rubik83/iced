@@ -16,6 +16,7 @@ use crate::keyboard;
 use crate::layout;
 use crate::mouse::{self, click};
 use crate::text;
+use crate::touch;
 use crate::{
     Clipboard, Element, Hasher, Layout, Length, Point, Rectangle, Size, Widget,
 };
@@ -242,12 +243,13 @@ where
         event: Event,
         layout: Layout<'_>,
         cursor_position: Point,
-        messages: &mut Vec<Message>,
         renderer: &Renderer,
-        clipboard: Option<&dyn Clipboard>,
+        clipboard: &mut dyn Clipboard,
+        messages: &mut Vec<Message>,
     ) -> event::Status {
         match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 let is_clicked = layout.bounds().contains(cursor_position);
 
                 self.state.is_focused = is_clicked;
@@ -318,13 +320,16 @@ where
                     return event::Status::Captured;
                 }
             }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerLifted { .. })
+            | Event::Touch(touch::Event::FingerLost { .. }) => {
                 self.state.is_dragging = false;
             }
-            Event::Mouse(mouse::Event::CursorMoved { x, .. }) => {
+            Event::Mouse(mouse::Event::CursorMoved { position })
+            | Event::Touch(touch::Event::FingerMoved { position, .. }) => {
                 if self.state.is_dragging {
                     let text_layout = layout.children().next().unwrap();
-                    let target = x - text_layout.bounds().x;
+                    let target = position.x - text_layout.bounds().x;
 
                     if target > 0.0 {
                         let value = if self.is_secure {
@@ -496,45 +501,84 @@ where
                             self.state.cursor.move_to(self.value.len());
                         }
                     }
+                    keyboard::KeyCode::C
+                        if self
+                            .state
+                            .keyboard_modifiers
+                            .is_command_pressed() =>
+                    {
+                        match self.state.cursor.selection(&self.value) {
+                            Some((start, end)) => {
+                                clipboard.write(
+                                    self.value.select(start, end).to_string(),
+                                );
+                            }
+                            None => {}
+                        }
+                    }
+                    keyboard::KeyCode::X
+                        if self
+                            .state
+                            .keyboard_modifiers
+                            .is_command_pressed() =>
+                    {
+                        match self.state.cursor.selection(&self.value) {
+                            Some((start, end)) => {
+                                clipboard.write(
+                                    self.value.select(start, end).to_string(),
+                                );
+                            }
+                            None => {}
+                        }
+
+                        let mut editor = Editor::new(
+                            &mut self.value,
+                            &mut self.state.cursor,
+                        );
+
+                        editor.delete();
+
+                        let message = (self.on_change)(editor.contents());
+                        messages.push(message);
+                    }
                     keyboard::KeyCode::V => {
                         if self.state.keyboard_modifiers.is_command_pressed() {
-                            if let Some(clipboard) = clipboard {
-                                let content = match self.state.is_pasting.take()
-                                {
-                                    Some(content) => content,
-                                    None => {
-                                        let content: String = clipboard
-                                            .content()
-                                            .unwrap_or(String::new())
-                                            .chars()
-                                            .filter(|c| !c.is_control())
-                                            .collect();
+                            let content = match self.state.is_pasting.take() {
+                                Some(content) => content,
+                                None => {
+                                    let content: String = clipboard
+                                        .read()
+                                        .unwrap_or(String::new())
+                                        .chars()
+                                        .filter(|c| !c.is_control())
+                                        .collect();
 
-                                        Value::new(&content)
-                                    }
-                                };
+                                    Value::new(&content)
+                                }
+                            };
 
-                                let mut editor = Editor::new(
-                                    &mut self.value,
-                                    &mut self.state.cursor,
-                                );
+                            let mut editor = Editor::new(
+                                &mut self.value,
+                                &mut self.state.cursor,
+                            );
 
-                                editor.paste(content.clone());
+                            editor.paste(content.clone());
 
-                                let message =
-                                    (self.on_change)(editor.contents());
-                                messages.push(message);
+                            let message = (self.on_change)(editor.contents());
+                            messages.push(message);
 
-                                self.state.is_pasting = Some(content);
-                            }
+                            self.state.is_pasting = Some(content);
                         } else {
                             self.state.is_pasting = None;
                         }
                     }
-                    keyboard::KeyCode::A => {
-                        if self.state.keyboard_modifiers.is_command_pressed() {
-                            self.state.cursor.select_all(&self.value);
-                        }
+                    keyboard::KeyCode::A
+                        if self
+                            .state
+                            .keyboard_modifiers
+                            .is_command_pressed() =>
+                    {
+                        self.state.cursor.select_all(&self.value);
                     }
                     keyboard::KeyCode::Escape => {
                         self.state.is_focused = false;

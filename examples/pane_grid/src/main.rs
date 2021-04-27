@@ -1,7 +1,8 @@
 use iced::{
     button, executor, keyboard, pane_grid, scrollable, Align, Application,
-    Button, Column, Command, Container, Element, HorizontalAlignment, Length,
-    PaneGrid, Scrollable, Settings, Subscription, Text,
+    Button, Clipboard, Color, Column, Command, Container, Element,
+    HorizontalAlignment, Length, PaneGrid, Row, Scrollable, Settings,
+    Subscription, Text,
 };
 use iced_native::{event, subscription, Event};
 
@@ -49,7 +50,11 @@ impl Application for Example {
         String::from("Pane grid - Iced")
     }
 
-    fn update(&mut self, message: Message) -> Command<Message> {
+    fn update(
+        &mut self,
+        message: Message,
+        _clipboard: &mut Clipboard,
+    ) -> Command<Message> {
         match message {
             Message::Split(axis, pane) => {
                 let result = self.panes.split(
@@ -141,10 +146,21 @@ impl Application for Example {
         let pane_grid = PaneGrid::new(&mut self.panes, |pane, content| {
             let is_focused = focus == Some(pane);
 
-            let title_bar =
-                pane_grid::TitleBar::new(format!("Pane {}", content.id))
-                    .padding(10)
-                    .style(style::TitleBar { is_focused });
+            let title = Row::with_children(vec![
+                Text::new("Pane").into(),
+                Text::new(content.id.to_string())
+                    .color(if is_focused {
+                        PANE_ID_COLOR_FOCUSED
+                    } else {
+                        PANE_ID_COLOR_UNFOCUSED
+                    })
+                    .into(),
+            ])
+            .spacing(5);
+
+            let title_bar = pane_grid::TitleBar::new(title)
+                .padding(10)
+                .style(style::TitleBar { is_focused });
 
             pane_grid::Content::new(content.view(pane, total_panes))
                 .title_bar(title_bar)
@@ -164,6 +180,17 @@ impl Application for Example {
             .into()
     }
 }
+
+const PANE_ID_COLOR_UNFOCUSED: Color = Color::from_rgb(
+    0xFF as f32 / 255.0,
+    0xC7 as f32 / 255.0,
+    0xC7 as f32 / 255.0,
+);
+const PANE_ID_COLOR_FOCUSED: Color = Color::from_rgb(
+    0xFF as f32 / 255.0,
+    0x47 as f32 / 255.0,
+    0x47 as f32 / 255.0,
+);
 
 fn handle_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
     use keyboard::KeyCode;

@@ -4,6 +4,8 @@
 use crate::event::{self, Event};
 use crate::layout;
 use crate::mouse;
+use crate::overlay;
+use crate::touch;
 use crate::{
     Clipboard, Element, Hasher, Layout, Length, Point, Rectangle, Widget,
 };
@@ -159,12 +161,24 @@ where
         event: Event,
         layout: Layout<'_>,
         cursor_position: Point,
+        renderer: &Renderer,
+        clipboard: &mut dyn Clipboard,
         messages: &mut Vec<Message>,
-        _renderer: &Renderer,
-        _clipboard: Option<&dyn Clipboard>,
     ) -> event::Status {
+        if let event::Status::Captured = self.content.on_event(
+            event.clone(),
+            layout.children().next().unwrap(),
+            cursor_position,
+            renderer,
+            clipboard,
+            messages,
+        ) {
+            return event::Status::Captured;
+        }
+
         match event {
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 if self.on_press.is_some() {
                     let bounds = layout.bounds();
 
@@ -175,7 +189,8 @@ where
                     }
                 }
             }
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+            | Event::Touch(touch::Event::FingerLifted { .. }) => {
                 if let Some(on_press) = self.on_press.clone() {
                     let bounds = layout.bounds();
 
@@ -189,6 +204,9 @@ where
                         return event::Status::Captured;
                     }
                 }
+            }
+            Event::Touch(touch::Event::FingerLost { .. }) => {
+                self.state.is_pressed = false;
             }
             _ => {}
         }
@@ -222,6 +240,13 @@ where
 
         self.width.hash(state);
         self.content.hash_layout(state);
+    }
+
+    fn overlay(
+        &mut self,
+        layout: Layout<'_>,
+    ) -> Option<overlay::Element<'_, Message, Renderer>> {
+        self.content.overlay(layout.children().next().unwrap())
     }
 }
 
